@@ -83,9 +83,9 @@ const testPages = async (
       events.onTestComplete(results);
     }
 
-    const rest = await testPages(normalizedUrls.slice(1), config, events);
-    if (Array.isArray(rest)) {
-      return [results, ...rest];
+    const res = await testPages(normalizedUrls.slice(1), config, events);
+    if (Array.isArray(res)) {
+      return [results, ...res];
     }
     return [results, rest];
   } catch (err) {
