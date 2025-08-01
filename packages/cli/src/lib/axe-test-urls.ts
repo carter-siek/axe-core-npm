@@ -35,9 +35,6 @@ const testPages = async (
 
     if (config.loadDelay) {
       events?.waitingMessage(config.loadDelay);
-      await new Promise<void>(resolve => {
-        setTimeout(resolve, config.loadDelay);
-      });
     }
 
     const axe = new AxeBuilder(driver, config.axeSource);
