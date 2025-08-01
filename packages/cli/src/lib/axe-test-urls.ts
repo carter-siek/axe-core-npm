@@ -3,8 +3,6 @@ import AxeBuilder from '@axe-core/webdriverjs';
 import { AxeResults } from 'axe-core';
 import { EventResponse, ConfigParams } from '../types';
 
-const delay = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
-
 const testPages = async (
   urls: string | string[],
   config: ConfigParams,
@@ -13,7 +11,7 @@ const testPages = async (
   const normalizedUrls = Array.isArray(urls) ? urls : [urls];
   const driver: WebDriver.WebDriver = await config.driver;
 
-  if (!normalizedUrls.length) {
+  if (normalizedUrls.length === 0) {
     await driver.quit();
     return [];
   }
@@ -37,7 +35,9 @@ const testPages = async (
 
     if (config.loadDelay) {
       events?.waitingMessage(config.loadDelay);
-      await delay(config.loadDelay);
+      await new Promise<void>(resolve => {
+        setTimeout(resolve, config.loadDelay);
+      });
     }
 
     const axe = new AxeBuilder(driver, config.axeSource);
@@ -87,7 +87,7 @@ const testPages = async (
     if (Array.isArray(res)) {
       return [results, ...res];
     }
-    return [results, rest];
+    return [results, res];
   } catch (err) {
     await driver.quit();
     throw err;
