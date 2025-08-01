@@ -3,21 +3,24 @@ import AxeBuilder from '@axe-core/webdriverjs';
 import { AxeResults } from 'axe-core';
 import { EventResponse, ConfigParams } from '../types';
 
+const delay = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
+
 const testPages = async (
   urls: string | string[],
   config: ConfigParams,
   events?: EventResponse
 ): Promise<AxeResults[] | AxeResults> => {
+  const normalizedUrls = Array.isArray(urls) ? urls : [urls];
   const driver: WebDriver.WebDriver = await config.driver;
 
-  if (urls.length === 0) {
+  if (!normalizedUrls.length) {
     await driver.quit();
-    return Promise.resolve([]);
+    return [];
   }
 
-  return new Promise((resolve, reject) => {
-    const currentUrl = urls[0].replace(/[,;]$/, '');
+  const currentUrl = normalizedUrls[0].replace(/[,;]$/, '');
 
+  try {
     if (events?.onTestStart) {
       events.onTestStart(currentUrl);
     }
@@ -26,73 +29,69 @@ const testPages = async (
       events?.startTimer('axe page load time');
     }
 
-    driver
-      .get(currentUrl)
-      .then(() => {
+    await driver.get(currentUrl);
+
+    if (config.timer) {
+      events?.endTimer('axe page load time');
+    }
+
+    if (config.loadDelay) {
+      events?.waitingMessage(config.loadDelay);
+      await delay(config.loadDelay);
+    }
+
+    const axe = new AxeBuilder(driver, config.axeSource);
+
+    if (Array.isArray(config.include)) {
+      config.include.forEach((include: string) => axe.include(include));
+    }
+
+    if (Array.isArray(config.exclude)) {
+      config.exclude.forEach((exclude: string) => axe.exclude(exclude));
+    }
+
+    if (config.tags) {
+      axe.withTags(config.tags);
+    } else if (config.rules) {
+      axe.withRules(config.rules);
+    }
+
+    /* istanbul ignore if */
+    if (config.disable) {
+      axe.disableRules(config.disable);
+    }
+
+    if (config.timer) {
+      events?.startTimer('axe-core execution time');
+    }
+
+    const results: AxeResults = await new Promise((resolve, reject) => {
+      axe.analyze((err: Error | null, r: AxeResults) => {
         if (config.timer) {
-          events?.endTimer('axe page load time');
+          events?.endTimer('axe-core execution time');
         }
 
-        if (config.loadDelay) {
-          events?.waitingMessage(config.loadDelay);
+        if (err) {
+          return reject(err);
         }
 
-        return new Promise(resolve => {
-          setTimeout(resolve, config.loadDelay);
-        });
-      })
-      .then(() => {
-        const axe = new AxeBuilder(driver, config.axeSource);
-
-        if (Array.isArray(config.include)) {
-          config.include.forEach((include: string) => axe.include(include));
-        }
-
-        if (Array.isArray(config.exclude)) {
-          config.exclude.forEach((exclude: string) => axe.exclude(exclude));
-        }
-
-        if (config.tags) {
-          axe.withTags(config.tags);
-        } else if (config.rules) {
-          axe.withRules(config.rules);
-        }
-
-        /* istanbul ignore if */
-        if (config.disable) {
-          axe.disableRules(config.disable);
-        }
-
-        if (config.timer) {
-          events?.startTimer('axe-core execution time');
-        }
-
-        axe.analyze((err: Error | null, results: AxeResults) => {
-          if (config.timer) {
-            events?.endTimer('axe-core execution time');
-          }
-
-          /* istanbul ignore if */
-          if (err) {
-            return reject(err);
-          }
-
-          // Notify about the update
-          if (events?.onTestComplete) {
-            events?.onTestComplete(results);
-          }
-
-          // Move to the next item
-          testPages(urls.slice(1), config, events).then((out: AxeResults) => {
-            resolve([results].concat(out));
-          });
-        });
-      })
-      .catch(async e => {
-        await driver.quit();
-        reject(e);
+        resolve(r);
       });
-  });
+    });
+
+    if (events?.onTestComplete) {
+      events.onTestComplete(results);
+    }
+
+    const rest = await testPages(normalizedUrls.slice(1), config, events);
+    if (Array.isArray(rest)) {
+      return [results, ...rest];
+    }
+    return [results, rest];
+  } catch (err) {
+    await driver.quit();
+    throw err;
+  }
 };
 
 export default testPages;
